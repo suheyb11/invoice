@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "274087791167",
+    "project_id": "invoice-app-suhayb",
+    "storage_bucket": "invoice-app-suhayb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:274087791167:android:38a94b6f1d67d6c228c68a",
+        "android_client_info": {
+          "package_name": "com.example.invoice_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCfdoVwAvpSsvKkeUpVBaBInNJ6CulEb9I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

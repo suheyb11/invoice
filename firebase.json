@@ -1,0 +1,40 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "invoice-app-suhayb",
+          "appId": "1:274087791167:android:38a94b6f1d67d6c228c68a",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "invoice-app-suhayb",
+          "configurations": {
+            "android": "1:274087791167:android:38a94b6f1d67d6c228c68a",
+            "ios": "1:274087791167:ios:e53b6411b590394e28c68a",
+            "web": "1:274087791167:web:72c950cb8e7d8ed828c68a"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

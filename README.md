@@ -22,7 +22,7 @@ Application casri ah oo lagu maareeyo **Quotation (qiimeyn)** iyo **Invoice (bii
    flutter run
    ```
 4. Android: `android/app/build.gradle` (ama `build.gradle.kts`) ka dhig `minSdk = 23`.
-5. App-ka: **Create account**.
+5. App-ka: **Create account** adigoo isticmaalaya `suheyb0102@gmail.com` (admin). Users-ka kale waxay sugayaan inaad oggolaato: **Settings → Admin panel**.
 
 > Haddii `flutter pub get` uu versions ka cabto, orod:
 > `flutter pub add firebase_core firebase_auth cloud_firestore` — wuxuu soo qaadanayaa versions-ka ugu dambeeyay.
@@ -46,7 +46,8 @@ lib/
     products.dart      Alaabta & adeegyada: list, form, stock
     login.dart         Sign in / Create account / Forgot password
     settings.dart      Account (sign out), shirkadda, currency, numbering, theme, delete all
-firestore.rules        Security rules (user walba xogtiisa kaliya)
+    admin.dart         Admin: users, privileges, actions-ka oo dhan
+firestore.rules        Security rules (xog wadaag + privileges user kasta)
 database/firestore-structure.md   Qaab-dhismeedka collections-ka
 ```
 
@@ -54,7 +55,7 @@ Quotation iyo Invoice waxay wadaagaan **isla screens iyo isla model** (`Doc`, `t
 
 ## Database (Firestore)
 
-User walba xogtiisa waxay ku jirtaa `users/{uid}/...`:
+Dhammaan users-ku waxay wadaagaan hal shirkad: `company/main/...`. Access-ka user kasta wuxuu ku jiraa `members/{uid}` (role, active, privileges). Faahfaahin: `database/firestore-structure.md`.
 
 | Collection | Ujeeddo |
 |---|---|
@@ -63,7 +64,7 @@ User walba xogtiisa waxay ku jirtaa `users/{uid}/...`:
 | `quotations` | Qiimeynta (items-ku document-ka gudihiisa ayay ku jiraan) |
 | `invoices` | Biilasha (items gudaha) |
 | `payments` | Lacag-bixinnada (`invoice_id`) |
-| `activity` | Taariikhda document kasta |
+| `activity` | Action kasta: yaa sameeyay, maxay ahayd, goorma (lama beddeli karo) |
 | `meta/settings` | Xogta shirkadda, currency, prefix, counters |
 
 Lambarada, lacag-bixinta, stock-ga iyo convert-ka waxay ku dhacaan **Firestore transactions** si aysan xogtu u khaldamin. Indexes lagama baahna.

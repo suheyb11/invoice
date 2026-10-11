@@ -130,12 +130,14 @@ class _DocListScreenState extends State<DocListScreen> {
     }
     return Scaffold(
       appBar: AppBar(title: Text(isQuote ? 'Quotations' : 'Invoices')),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'fab-${widget.type}',
-        onPressed: create,
-        icon: const Icon(Icons.add_rounded),
-        label: Text(isQuote ? 'New quote' : 'New invoice'),
-      ),
+      floatingActionButton: !AppDb.can(AppDb.perm(widget.type, 'create'))
+          ? null
+          : FloatingActionButton.extended(
+              heroTag: 'fab-${widget.type}',
+              onPressed: create,
+              icon: const Icon(Icons.add_rounded),
+              label: Text(isQuote ? 'New quote' : 'New invoice'),
+            ),
       body: Column(
         children: [
           SearchBox(
@@ -898,7 +900,25 @@ class _DocDetailScreenState extends State<DocDetailScreen> {
     list.add(_Action('duplicate', 'Duplicate', Icons.copy_rounded));
     final canDelete = d.isQuote ? s != 'converted' : (s == 'draft' || s == 'cancelled');
     if (canDelete) list.add(_Action('delete', 'Delete', Icons.delete_outline_rounded, danger: true));
-    return list;
+    // Only show what this user's privileges allow.
+    return list.where((a) => allowed(a.key, d)).toList();
+  }
+
+  bool allowed(String key, Doc d) {
+    switch (key) {
+      case 'open_link':
+        return true;
+      case 'pay':
+        return AppDb.can('payments_add');
+      case 'convert':
+        return AppDb.can('quotes_edit') && AppDb.can('invoices_create');
+      case 'duplicate':
+        return AppDb.can(AppDb.perm(d.type, 'create'));
+      case 'delete':
+        return AppDb.can(AppDb.perm(d.type, 'delete'));
+      default: // edit and every status change
+        return AppDb.can(AppDb.perm(d.type, 'edit'));
+    }
   }
 
   Future<void> run(String key) async {
@@ -1258,14 +1278,18 @@ class _DocDetailScreenState extends State<DocDetailScreen> {
               ],
             ),
           ),
-          if (doc!.status != 'cancelled')
+          if (doc!.status != 'cancelled' && AppDb.can('payments_delete'))
             IconButton(
               tooltip: 'Delete payment',
               icon: Icon(Icons.delete_outline_rounded, color: scheme.onSurfaceVariant),
               onPressed: () async {
                 final ok = await confirm(context, 'Delete payment?', '${money(p.amount)} will be removed and the balance updated.', okText: 'Delete', danger: true);
                 if (!ok) return;
-                await AppDb.deletePayment(p);
+                try {
+                  await AppDb.deletePayment(p);
+                } catch (e) {
+                  if (mounted) toast(context, errorText(e), error: true);
+                }
                 await load();
               },
             ),
@@ -1298,7 +1322,8 @@ class _DocDetailScreenState extends State<DocDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(a.action, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  Text(niceDateTime(a.createdAt), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                  Text(a.byEmail.isEmpty ? niceDateTime(a.createdAt) : '${niceDateTime(a.createdAt)} · ${a.byEmail}',
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
                 ],
               ),
             ),

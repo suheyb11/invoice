@@ -44,12 +44,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Customers')),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'fab-customer',
-        onPressed: () => open(const CustomerFormScreen()),
-        icon: const Icon(Icons.person_add_alt_1_rounded),
-        label: const Text('Add customer'),
-      ),
+      floatingActionButton: !AppDb.can('customers')
+          ? null
+          : FloatingActionButton.extended(
+              heroTag: 'fab-customer',
+              onPressed: () => open(const CustomerFormScreen()),
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text('Add customer'),
+            ),
       body: Column(
         children: [
           SearchBox(

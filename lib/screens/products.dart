@@ -56,12 +56,14 @@ class _ProductsScreenState extends State<ProductsScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'fab-product',
-        onPressed: () => open(null),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add product'),
-      ),
+      floatingActionButton: !AppDb.can('products')
+          ? null
+          : FloatingActionButton.extended(
+              heroTag: 'fab-product',
+              onPressed: () => open(null),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add product'),
+            ),
       body: Column(
         children: [
           SearchBox(
@@ -224,10 +226,14 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   Future<void> delete() async {
     final ok = await confirm(context, 'Delete product?', 'If it is used in documents it will be archived instead.', okText: 'Delete', danger: true);
     if (!ok) return;
-    final msg = await AppDb.deleteProduct(widget.product!.id!);
-    if (mounted) {
-      toast(context, msg);
-      Navigator.pop(context);
+    try {
+      final msg = await AppDb.deleteProduct(widget.product!.id!);
+      if (mounted) {
+        toast(context, msg);
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) toast(context, errorText(e), error: true);
     }
   }
 

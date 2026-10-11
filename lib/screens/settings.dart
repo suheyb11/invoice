@@ -2,7 +2,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../db.dart';
+import '../models.dart';
 import '../widgets.dart';
+import 'admin.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -39,7 +41,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     for (final k in textKeys) {
       c[k] = TextEditingController(text: App.settings[k] ?? '');
     }
-    theme = App.settings['theme'] ?? 'system';
+    final mine = AppDb.me?.theme ?? '';
+    theme = mine.isNotEmpty ? mine : (App.settings['theme'] ?? 'system');
   }
 
   @override
@@ -64,20 +67,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     for (final k in textKeys) {
       values[k] = c[k]!.text.trim();
     }
-    values['theme'] = theme;
-    await AppDb.saveSettings(values);
-    App.themeMode.value = themeFromText(theme);
-    if (!mounted) return;
-    setState(() => saving = false);
-    toast(context, 'Settings saved.');
+    try {
+      await AppDb.saveSettings(values);
+      if (mounted) toast(context, 'Settings saved.');
+    } catch (e) {
+      if (mounted) toast(context, errorText(e), error: true);
+    }
+    if (mounted) setState(() => saving = false);
+  }
+
+  // Theme is personal and saved right away.
+  Future<void> setTheme(String t) async {
+    setState(() => theme = t);
+    App.themeMode.value = themeFromText(t);
+    try {
+      await AppDb.saveTheme(t);
+    } catch (e) {
+      // offline: Firestore sends it later
+    }
   }
 
   Future<void> clearAll() async {
     final ok = await confirm(context, 'Delete ALL data?', 'Every customer, product, quotation, invoice and payment will be deleted. Settings are kept.',
         okText: 'Delete everything', danger: true);
     if (!ok) return;
-    await AppDb.clearAll();
-    if (mounted) toast(context, 'All data deleted.');
+    try {
+      await AppDb.clearAll();
+      if (mounted) toast(context, 'All data deleted.');
+    } catch (e) {
+      if (mounted) toast(context, errorText(e), error: true);
+    }
   }
 
   Future<void> signOut() async {
@@ -102,6 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     const digits = TextInputType.number;
+    final canSettings = AppDb.can('settings');
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
@@ -113,62 +133,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ListTile(
               leading: const Icon(Icons.account_circle_outlined),
               title: Text(FirebaseAuth.instance.currentUser?.email ?? ''),
-              subtitle: const Text('Data is saved in Firebase and synced across devices'),
+              subtitle: Text(AppDb.isAdmin ? 'Admin · all privileges' : 'Staff · ${AppDb.me?.permCount ?? 0} of ${permLabels.length} privileges'),
               trailing: TextButton(onPressed: signOut, child: const Text('Sign out')),
             ),
           ),
-          const SectionTitle('Company (shown on PDFs)'),
-          FadeSlideIn(
-            index: 0,
-            child: Column(
-              children: [
-                field('company_name', 'Company name', icon: Icons.business_rounded),
-                field('company_address', 'Address', lines: 2, icon: Icons.location_on_outlined),
-                field('company_phone', 'Phone', keyboard: TextInputType.phone, icon: Icons.phone_outlined),
-                field('company_email', 'Email', keyboard: TextInputType.emailAddress, icon: Icons.alternate_email_rounded),
-              ],
-            ),
-          ),
-          const SectionTitle('Money & numbering'),
-          FadeSlideIn(
-            index: 1,
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: field('currency', 'Currency symbol')),
-                    const SizedBox(width: 10),
-                    Expanded(child: field('default_tax', 'Default tax %', keyboard: digits)),
-                  ],
+          if (AppDb.isAdmin) ...[
+            const SizedBox(height: 10),
+            FadeSlideIn(
+              child: AppCard(
+                padding: EdgeInsets.zero,
+                onTap: () => Navigator.push(context, slideRoute(const AdminScreen())),
+                child: const ListTile(
+                  leading: Icon(Icons.admin_panel_settings_rounded, color: Palette.blue),
+                  title: Text('Admin panel', style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text('Users, privileges and every action'),
+                  trailing: Icon(Icons.chevron_right_rounded),
                 ),
-                Row(
-                  children: [
-                    Expanded(child: field('quote_prefix', 'Quote prefix')),
-                    const SizedBox(width: 10),
-                    Expanded(child: field('invoice_prefix', 'Invoice prefix')),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Expanded(child: field('quote_valid_days', 'Quote valid (days)', keyboard: digits)),
-                    const SizedBox(width: 10),
-                    Expanded(child: field('invoice_due_days', 'Invoice due (days)', keyboard: digits)),
-                  ],
-                ),
-              ],
+              ),
             ),
-          ),
-          const SectionTitle('Default text'),
-          FadeSlideIn(
-            index: 2,
-            child: Column(
-              children: [
-                field('quote_terms', 'Quotation terms', lines: 3),
-                field('invoice_terms', 'Invoice terms', lines: 3),
-                field('default_notes', 'Default notes', lines: 2),
-              ],
+          ],
+          if (canSettings) ...[
+            const SectionTitle('Company (shown on PDFs)'),
+            FadeSlideIn(
+              index: 0,
+              child: Column(
+                children: [
+                  field('company_name', 'Company name', icon: Icons.business_rounded),
+                  field('company_address', 'Address', lines: 2, icon: Icons.location_on_outlined),
+                  field('company_phone', 'Phone', keyboard: TextInputType.phone, icon: Icons.phone_outlined),
+                  field('company_email', 'Email', keyboard: TextInputType.emailAddress, icon: Icons.alternate_email_rounded),
+                ],
+              ),
             ),
-          ),
+            const SectionTitle('Money & numbering'),
+            FadeSlideIn(
+              index: 1,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: field('currency', 'Currency symbol')),
+                      const SizedBox(width: 10),
+                      Expanded(child: field('default_tax', 'Default tax %', keyboard: digits)),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Expanded(child: field('quote_prefix', 'Quote prefix')),
+                      const SizedBox(width: 10),
+                      Expanded(child: field('invoice_prefix', 'Invoice prefix')),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Expanded(child: field('quote_valid_days', 'Quote valid (days)', keyboard: digits)),
+                      const SizedBox(width: 10),
+                      Expanded(child: field('invoice_due_days', 'Invoice due (days)', keyboard: digits)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SectionTitle('Default text'),
+            FadeSlideIn(
+              index: 2,
+              child: Column(
+                children: [
+                  field('quote_terms', 'Quotation terms', lines: 3),
+                  field('invoice_terms', 'Invoice terms', lines: 3),
+                  field('default_notes', 'Default notes', lines: 2),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'Saving...' : 'Save settings')),
+          ],
           const SectionTitle('Appearance'),
           SegmentedButton<String>(
             segments: const [
@@ -177,26 +216,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ButtonSegment(value: 'dark', label: Text('Dark'), icon: Icon(Icons.dark_mode_rounded)),
             ],
             selected: {theme},
-            onSelectionChanged: (s) {
-              setState(() => theme = s.first);
-              App.themeMode.value = themeFromText(theme); // preview right away
-            },
+            onSelectionChanged: (s) => setTheme(s.first),
           ),
-          const SizedBox(height: 18),
-          FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'Saving...' : 'Save settings')),
-          const SectionTitle('Data'),
-          AppCard(
-            padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Icon(Icons.delete_forever_rounded, color: Colors.red.shade600),
-                  title: Text('Delete all data', style: TextStyle(color: Colors.red.shade600)),
-                  onTap: clearAll,
-                ),
-              ],
+          if (AppDb.can('delete_all')) ...[
+            const SectionTitle('Data'),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: ListTile(
+                leading: Icon(Icons.delete_forever_rounded, color: Colors.red.shade600),
+                title: Text('Delete all data', style: TextStyle(color: Colors.red.shade600)),
+                onTap: clearAll,
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 20),
           Center(
             child: Text('Invoice & Quotation · v1.0', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),

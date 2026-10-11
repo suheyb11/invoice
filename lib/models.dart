@@ -362,7 +362,85 @@ class Payment {
 class Activity {
   String action;
   String createdAt;
-  Activity(this.action, this.createdAt);
+  String byEmail;
+  Activity(this.action, this.createdAt, {this.byEmail = ''});
+}
+
+// One line of the company-wide action log (admin panel).
+class LogEntry {
+  String type; // quote | invoice | customer | product | settings | member | data
+  String docId;
+  String action;
+  String label; // document number, customer name, ...
+  String byUid;
+  String byEmail;
+  String createdAt;
+
+  LogEntry(this.type, this.docId, this.action, this.label, this.byUid, this.byEmail, this.createdAt);
+
+  static LogEntry fromMap(Map<String, dynamic> m) {
+    return LogEntry(toText(m['doc_type']), toText(m['doc_id']), toText(m['action']), toText(m['label']), toText(m['by_uid']), toText(m['by_email']),
+        toText(m['created_at']));
+  }
+}
+
+// ---------------------------------------------------------------- Member (user access)
+// Every privilege the admin can give. Admins always have all of them.
+const Map<String, String> permLabels = {
+  'quotes_create': 'Create quotations',
+  'quotes_edit': 'Edit quotations & change status',
+  'quotes_delete': 'Delete quotations',
+  'invoices_create': 'Create invoices',
+  'invoices_edit': 'Edit, issue & cancel invoices',
+  'invoices_delete': 'Delete invoices',
+  'payments_add': 'Record payments',
+  'payments_delete': 'Delete payments',
+  'customers': 'Add, edit & delete customers',
+  'products': 'Add, edit & delete products',
+  'settings': 'Change company settings',
+  'delete_all': 'Delete all data',
+};
+
+const Map<String, List<String>> permGroups = {
+  'Quotations': ['quotes_create', 'quotes_edit', 'quotes_delete'],
+  'Invoices': ['invoices_create', 'invoices_edit', 'invoices_delete'],
+  'Payments': ['payments_add', 'payments_delete'],
+  'Customers & products': ['customers', 'products'],
+  'Settings & data': ['settings', 'delete_all'],
+};
+
+class Member {
+  String uid;
+  String email;
+  String role; // admin | staff
+  bool active; // false = waiting for approval or blocked
+  Map<String, bool> perms;
+  String theme;
+  String createdAt;
+
+  Member({required this.uid, required this.email, this.role = 'staff', this.active = false, Map<String, bool>? perms, this.theme = '', this.createdAt = ''})
+      : perms = perms ?? {};
+
+  bool get isAdmin => role == 'admin';
+  bool can(String p) => active && (isAdmin || perms[p] == true);
+  int get permCount => isAdmin ? permLabels.length : permLabels.keys.where((k) => perms[k] == true).length;
+
+  static Member fromMap(String uid, Map<String, dynamic> m) {
+    final raw = m['perms'];
+    final perms = <String, bool>{};
+    if (raw is Map) {
+      raw.forEach((k, v) => perms[k.toString()] = v == true);
+    }
+    return Member(
+      uid: uid,
+      email: toText(m['email']),
+      role: toText(m['role']).isEmpty ? 'staff' : toText(m['role']),
+      active: m['active'] == true,
+      perms: perms,
+      theme: toText(m['theme']),
+      createdAt: toText(m['created_at']),
+    );
+  }
 }
 
 // ---------------------------------------------------------------- Dashboard numbers

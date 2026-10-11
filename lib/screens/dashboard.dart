@@ -197,7 +197,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Expanded(
           child: ColorButton(
-            onPressed: () => open(const DocEditorScreen(type: 'quote')),
+            onPressed: AppDb.can('quotes_create') ? () => open(const DocEditorScreen(type: 'quote')) : null,
             icon: Icons.add_rounded,
             text: 'New quote',
             color: Palette.orange,
@@ -207,7 +207,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: ColorButton(
-            onPressed: () => open(const DocEditorScreen(type: 'invoice')),
+            onPressed: AppDb.can('invoices_create') ? () => open(const DocEditorScreen(type: 'invoice')) : null,
             icon: Icons.add_rounded,
             text: 'New invoice',
             color: Palette.blue,

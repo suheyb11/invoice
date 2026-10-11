@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'db.dart';
 import 'firebase_options.dart';
+import 'models.dart';
 import 'screens/customers.dart';
 import 'screens/dashboard.dart';
 import 'screens/documents.dart';
@@ -150,7 +153,8 @@ class SplashScreen extends StatelessWidget {
   }
 }
 
-// Loads this user's settings once after login, then opens the app.
+// After login: loads the user's access (member record) and the company settings,
+// then opens the app. Changes made by the admin arrive live.
 class SessionLoader extends StatefulWidget {
   const SessionLoader({super.key});
 
@@ -160,6 +164,9 @@ class SessionLoader extends StatefulWidget {
 
 class _SessionLoaderState extends State<SessionLoader> {
   bool ready = false;
+  String error = '';
+  Member? member;
+  StreamSubscription<Member?>? watch;
 
   @override
   void initState() {
@@ -167,24 +174,127 @@ class _SessionLoaderState extends State<SessionLoader> {
     load();
   }
 
+  @override
+  void dispose() {
+    watch?.cancel();
+    AppDb.me = null; // signed out
+    super.dispose();
+  }
+
   Future<void> load() async {
+    setState(() {
+      ready = false;
+      error = '';
+    });
+    try {
+      member = await AppDb.loadMember();
+    } catch (e) {
+      if (mounted) setState(() => error = errorText(e));
+      return;
+    }
+    if (member!.active) await openCompany();
+    watch ??= AppDb.watchMe().listen(onMemberChanged);
+    if (mounted) setState(() => ready = true);
+  }
+
+  Future<void> openCompany() async {
+    try {
+      await AppDb.migratePersonalData();
+    } catch (e) {
+      // offline or nothing to copy: try again next time
+    }
     try {
       App.settings = await AppDb.getSettings();
     } catch (e) {
       App.settings = Map<String, String>.from(AppDb.defaultSettings);
     }
-    App.themeMode.value = themeFromText(App.settings['theme']);
+    final theme = member!.theme.isNotEmpty ? member!.theme : App.settings['theme'];
+    App.themeMode.value = themeFromText(theme);
     try {
       await AppDb.refreshStatuses();
     } catch (e) {
       // offline: statuses are refreshed again on the dashboard
     }
-    if (mounted) setState(() => ready = true);
   }
+
+  Future<void> onMemberChanged(Member? m) async {
+    if (m == null || !mounted) return;
+    final wasActive = member?.active ?? false;
+    AppDb.me = m;
+    member = m;
+    if (m.active && !wasActive) await openCompany();
+    if (mounted) setState(() {});
+  }
+
+  // Changes when the admin changes this user's access, so every screen is rebuilt.
+  String get accessKey => '${member!.active}-${member!.role}-${member!.perms.keys.where((k) => member!.perms[k] == true).join(',')}';
 
   @override
   Widget build(BuildContext context) {
-    return ready ? const HomeShell() : const SplashScreen();
+    if (error.isNotEmpty) return AccessScreen(title: 'Could not open your account', message: error, onRetry: load);
+    if (!ready) return const SplashScreen();
+    if (!member!.active) {
+      return AccessScreen(
+        title: 'Waiting for approval',
+        message: 'Your account (${member!.email}) was created. The admin must approve it and give you privileges before you can use the app.',
+        onRetry: load,
+      );
+    }
+    return HomeShell(key: ValueKey(accessKey));
+  }
+}
+
+// Shown while a user is waiting for the admin, is blocked, or loading failed.
+class AccessScreen extends StatelessWidget {
+  final String title;
+  final String message;
+  final VoidCallback onRetry;
+
+  const AccessScreen({super.key, required this.title, required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: FadeSlideIn(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Floating(
+                        child: Container(
+                          padding: const EdgeInsets.all(22),
+                          decoration: BoxDecoration(color: Palette.orange.withAlpha(30), shape: BoxShape.circle),
+                          child: const Icon(Icons.hourglass_top_rounded, size: 44, color: Palette.orange),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 10),
+                    Text(message, textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4)),
+                    const SizedBox(height: 28),
+                    ColorButton(text: 'Check again', icon: Icons.refresh_rounded, onPressed: onRetry),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: () => FirebaseAuth.instance.signOut(),
+                      icon: const Icon(Icons.logout_rounded),
+                      label: const Text('Sign out'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

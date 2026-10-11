@@ -1,9 +1,95 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Each signed-in user can only read and write their own data.
+
+    // ------------------------------------------------------------ helpers
+    function signedIn() { return request.auth != null; }
+    function memberPath() { return /databases/$(database)/documents/members/$(request.auth.uid); }
+    function me() { return get(memberPath()).data; }
+    // Active member = approved by the admin and not blocked.
+    function isMember() { return signedIn() && exists(memberPath()) && me().active == true; }
+    function isAdmin() { return isMember() && me().role == 'admin'; }
+    // Admins have every privilege; staff only what the admin switched on.
+    function can(p) { return isAdmin() || (isMember() && me().perms.get(p, false) == true); }
+    function onlyChanged(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function customerFields() { return ['customer_name', 'customer_phone', 'customer_email', 'customer_address']; }
+    function counters() { return ['quote_next', 'invoice_next']; }
+    function mayCount() { return can('quotes_create') || can('invoices_create') || can('delete_all'); }
+
+    // ------------------------------------------------------------ members (access)
+    match /members/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // First sign in: a normal user waits for approval with no privileges;
+      // only the admin email may create itself as admin.
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && ((request.resource.data.role == 'staff' && request.resource.data.active == false && request.resource.data.perms.size() == 0)
+          || (request.resource.data.role == 'admin' && request.auth.token.email == 'suheyb0102@gmail.com'));
+      // The admin changes other users; everyone may change their own theme only.
+      allow update: if (isAdmin() && request.auth.uid != uid)
+        || (signedIn() && request.auth.uid == uid && onlyChanged(['theme']));
+      allow delete: if isAdmin() && request.auth.uid != uid;
+    }
+
+    // ------------------------------------------------------------ shared company data
+    match /company/main {
+      match /meta/settings {
+        allow read: if isMember();
+        allow create: if can('settings') || (mayCount() && request.resource.data.keys().hasOnly(counters()));
+        allow update: if can('settings') || (mayCount() && onlyChanged(counters()));
+      }
+
+      match /customers/{id} {
+        allow read: if isMember();
+        allow create, update: if can('customers');
+        allow delete: if can('customers') || can('delete_all');
+      }
+
+      match /products/{id} {
+        allow read: if isMember();
+        allow create: if can('products');
+        // Issuing / cancelling / editing an invoice moves stock.
+        allow update: if can('products') || (can('invoices_edit') && onlyChanged(['stock']));
+        allow delete: if can('products') || can('delete_all');
+      }
+
+      match /quotations/{id} {
+        allow read: if isMember();
+        allow create: if can('quotes_create');
+        allow update: if can('quotes_edit')
+          || (can('customers') && onlyChanged(customerFields()))
+          || (can('invoices_delete') && onlyChanged(['status', 'link_id']));
+        allow delete: if can('quotes_delete') || can('delete_all');
+      }
+
+      match /invoices/{id} {
+        allow read: if isMember();
+        allow create: if can('invoices_create');
+        allow update: if can('invoices_edit')
+          || ((can('payments_add') || can('payments_delete')) && onlyChanged(['paid', 'status']))
+          || (can('customers') && onlyChanged(customerFields()));
+        allow delete: if can('invoices_delete') || can('delete_all');
+      }
+
+      match /payments/{id} {
+        allow read: if isMember();
+        allow create: if can('payments_add');
+        allow update: if false;
+        allow delete: if can('payments_delete') || can('delete_all');
+      }
+
+      // Action log: anyone active may add their own lines; nobody may change or delete them.
+      match /activity/{id} {
+        allow read: if isMember();
+        allow create: if isMember() && request.resource.data.by_uid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    // ------------------------------------------------------------ old per-user data
+    // Read only, so the admin's old data can be copied into the company once.
     match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read: if signedIn() && request.auth.uid == uid;
     }
   }
 }
